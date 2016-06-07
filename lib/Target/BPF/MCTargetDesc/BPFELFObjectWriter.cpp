@@ -28,7 +28,7 @@ protected:
 }
 
 BPFELFObjectWriter::BPFELFObjectWriter(uint8_t OSABI)
-    : MCELFObjectTargetWriter(/*Is64Bit*/ true, OSABI, ELF::EM_NONE,
+    : MCELFObjectTargetWriter(/*Is64Bit*/ true, OSABI, ELF::EM_BPF,
                               /*HasRelocationAddend*/ false) {}
 
 BPFELFObjectWriter::~BPFELFObjectWriter() {}
@@ -37,6 +37,11 @@ unsigned BPFELFObjectWriter::getRelocType(MCContext &Ctx, const MCValue &Target,
                                           const MCFixup &Fixup,
                                           bool IsPCRel) const {
   // determine the type of the relocation
+  // ??? Give these some proper names.
+  // ??? Note that R_BPF_MAP_FD (= R_X86_64_64) is the only relocation
+  // supported by the loader.  Which others of these actually need
+  // to be emitted in the circumstances?
+
   switch ((unsigned)Fixup.getKind()) {
   default:
     llvm_unreachable("invalid fixup kind!");
