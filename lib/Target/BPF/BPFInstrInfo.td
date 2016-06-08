@@ -53,6 +53,9 @@ def u64imm   : Operand<i64> {
 def i64immSExt32 : PatLeaf<(imm),
                 [{return isInt<32>(N->getSExtValue()); }]>;
 
+def i64immZExt32 : PatLeaf<(imm),
+                [{return isUInt<32>(N->getZExtValue()); }]>;
+
 // Addressing modes.
 def ADDRri : ComplexPattern<i64, 2, "SelectAddr", [], []>;
 def FIri : ComplexPattern<i64, 2, "SelectFIAddr", [add, or], []>;
@@ -191,7 +194,21 @@ let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
   def MOV_rr
     : F_COF<7 /* BPF_ALU64 */, 0xb /* BPF_MOV */, 1 /* BPF_X */,
             (outs GPR:$dst), (ins GPR:$src),
-            "mov\t$dst, $src", []> {
+            "mov\t$dst, $src",
+            [(set GPR:$dst, GPR:$src)]> {
+    bits<4> dst;
+    bits<4> src;
+    let BPFDst = dst;
+    let BPFSrc = src;
+    let BPFOff = 0;
+    let BPFImm = 0;
+  }
+
+  def MOV_rw
+    : F_COF<4 /* BPF_ALU */, 0xb /* BPF_MOV */, 1 /* BPF_X */,
+            (outs GPR:$dst), (ins GPR:$src),
+            "movw\t$dst, $src",
+            [(set GPR:$dst, (and GPR:$src, 0xffffffff))]> {
     bits<4> dst;
     bits<4> src;
     let BPFDst = dst;
@@ -214,10 +231,24 @@ let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
     let BPFImm = imm;
   }
 
+  def MOV_ru
+    : F_COF<4 /* BPF_ALU64 */, 0xb /* BPF_MOV */, 0 /* BPF_K */,
+           (outs GPR:$dst), (ins i64imm:$imm),
+           "movw\t$dst, $imm",
+           [(set GPR:$dst, (i64 i64immZExt32:$imm))]> {
+    bits<4> dst;
+    bits<32> imm;
+    let BPFDst = dst;
+    let BPFSrc = 0;
+    let BPFOff = 0;
+    let BPFImm = imm;
+  }
+
   def LD_imm64
     : F_CMS<0 /* BPF_LD */, 0 /* BPF_IMM */, 3 /* BPF_DW */,
             (outs GPR:$dst), (ins u64imm:$imm),
-            "ld_64\t$dst, $imm", []> {
+            "ld_64\t$dst, $imm",
+            [(set GPR:$dst, i64:$imm)]> {
     bits<4> dst;
     bits<64> imm;
     let BPFDst = dst;
@@ -366,10 +397,6 @@ let usesCustomInserter = 1 in {
 
 // load 64-bit global addr into register
 def : Pat<(BPFWrapper tglobaladdr:$in), (LD_imm64 tglobaladdr:$in)>;
-
-// 0xffffFFFF doesn't fit into simm32, optimize common case
-def : Pat<(i64 (and (i64 GPR:$src), 0xffffFFFF)),
-          (SRL_ri (SLL_ri (i64 GPR:$src), 32), 32)>;
 
 // Calls
 def : Pat<(BPFcall tglobaladdr:$dst), (JAL tglobaladdr:$dst)>;
