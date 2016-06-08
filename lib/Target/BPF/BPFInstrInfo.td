@@ -166,6 +166,18 @@ let Constraints = "$dst = $srcd" in {
     defm SLL : ALU<0x6, "sll", shl>;
     defm SRL : ALU<0x7, "srl", srl>;
     defm SRA : ALU<0xc, "sra", sra>;
+
+    def NEG_r
+      : F_COF<7 /* BPF_ALU64 */, 8 /* BPF_NEG */, 0,
+              (outs GPR:$dst), (ins GPR:$srcd),
+              "neg\t$dst",
+              [(set GPR:$dst, (ineg GPR:$srcd))]> {
+      bits<4> dst;
+      let BPFDst = dst;
+      let BPFSrc = 0;
+      let BPFOff = 0;
+      let BPFImm = 0;
+    }
   }
   let isCommutable = 1 in {
     defm MUL : ALU<0x2, "mul", mul>;
