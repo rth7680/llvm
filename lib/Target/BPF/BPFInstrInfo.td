@@ -80,45 +80,31 @@ def BPF_CC_GEU : PatLeaf<(imm),
 
 // jump instructions
 class JMP_RR<bits<4> Opc, string OpcodeStr, PatLeaf Cond>
-    : InstBPF<(outs), (ins GPR:$dst, GPR:$src, brtarget:$BrDst),
-              !strconcat(OpcodeStr, "\t$dst, $src goto $BrDst"),
-              [(BPFbrcc i64:$dst, i64:$src, Cond, bb:$BrDst)]> {
-  bits<4> op;
-  bits<1> BPFSrc;
+    : F_COF<5 /* BPF_JMP */, Opc, 1 /* BPF_X */,
+            (outs), (ins GPR:$dst, GPR:$src, brtarget:$BrDst),
+            !strconcat(OpcodeStr, "\t$dst, $src goto $BrDst"),
+            [(BPFbrcc GPR:$dst, GPR:$src, Cond, bb:$BrDst)]> {
   bits<4> dst;
   bits<4> src;
   bits<16> BrDst;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{55-52} = src;
-  let Inst{51-48} = dst;
-  let Inst{47-32} = BrDst;
-
-  let op = Opc;
-  let BPFSrc = 1;
-  let BPFClass = 5; // BPF_JMP
+  let BPFDst = dst;
+  let BPFSrc = src;
+  let BPFOff = BrDst;
+  let BPFImm = 0;
 }
 
 class JMP_RI<bits<4> Opc, string OpcodeStr, PatLeaf Cond>
-    : InstBPF<(outs), (ins GPR:$dst, i64imm:$imm, brtarget:$BrDst),
-              !strconcat(OpcodeStr, "i\t$dst, $imm goto $BrDst"),
-              [(BPFbrcc i64:$dst, i64immSExt32:$imm, Cond, bb:$BrDst)]> {
-  bits<4> op;
-  bits<1> BPFSrc;
+    : F_COF<5 /* BPF_JMP */, Opc, 0 /* BPF_K */,
+            (outs), (ins GPR:$dst, i64imm:$imm, brtarget:$BrDst),
+            !strconcat(OpcodeStr, "i\t$dst, $imm goto $BrDst"),
+            [(BPFbrcc GPR:$dst, i64immSExt32:$imm, Cond, bb:$BrDst)]> {
   bits<4> dst;
-  bits<16> BrDst;
   bits<32> imm;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{51-48} = dst;
-  let Inst{47-32} = BrDst;
-  let Inst{31-0} = imm;
-
-  let op = Opc;
+  bits<16> BrDst;
+  let BPFDst = dst;
   let BPFSrc = 0;
-  let BPFClass = 5; // BPF_JMP
+  let BPFImm = imm;
+  let BPFOff = BrDst;
 }
 
 multiclass J<bits<4> Opc, string OpcodeStr, PatLeaf Cond> {
@@ -128,51 +114,39 @@ multiclass J<bits<4> Opc, string OpcodeStr, PatLeaf Cond> {
 
 let isBranch = 1, isTerminator = 1, hasDelaySlot=0 in {
 // cmp+goto instructions
-defm JEQ  : J<0x1, "jeq",  BPF_CC_EQ>;
-defm JUGT : J<0x2, "jgt", BPF_CC_GTU>;
-defm JUGE : J<0x3, "jge", BPF_CC_GEU>;
-defm JNE  : J<0x5, "jne",  BPF_CC_NE>;
-defm JSGT : J<0x6, "jsgt", BPF_CC_GT>;
-defm JSGE : J<0x7, "jsge", BPF_CC_GE>;
+  defm JEQ  : J<0x1, "jeq",  BPF_CC_EQ>;
+  defm JNE  : J<0x5, "jne",  BPF_CC_NE>;
+  defm JUGT : J<0x2, "jgt", BPF_CC_GTU>;
+  defm JUGE : J<0x3, "jge", BPF_CC_GEU>;
+  defm JSGT : J<0x6, "jsgt", BPF_CC_GT>;
+  defm JSGE : J<0x7, "jsge", BPF_CC_GE>;
 }
 
 // ALU instructions
 class ALU_RI<bits<4> Opc, string OpcodeStr, SDNode OpNode>
-    : InstBPF<(outs GPR:$dst), (ins GPR:$src2, i64imm:$imm),
-              !strconcat(OpcodeStr, "i\t$dst, $imm"),
-              [(set GPR:$dst, (OpNode GPR:$src2, i64immSExt32:$imm))]> {
-  bits<4> op;
-  bits<1> BPFSrc;
+    : F_COF<7 /* BPF_ALU64 */, Opc, 0 /* BPF_K */,
+           (outs GPR:$dst), (ins GPR:$srcd, i64imm:$imm),
+	   !strconcat(OpcodeStr, "i\t$dst, $imm"),
+           [(set GPR:$dst, (OpNode GPR:$srcd, i64immSExt32:$imm))]> {
   bits<4> dst;
   bits<32> imm;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{51-48} = dst;
-  let Inst{31-0} = imm;
-
-  let op = Opc;
+  let BPFDst = dst;
   let BPFSrc = 0;
-  let BPFClass = 7; // BPF_ALU64
+  let BPFOff = 0;
+  let BPFImm = imm;
 }
 
 class ALU_RR<bits<4> Opc, string OpcodeStr, SDNode OpNode>
-    : InstBPF<(outs GPR:$dst), (ins GPR:$src2, GPR:$src),
-              !strconcat(OpcodeStr, "\t$dst, $src"),
-              [(set GPR:$dst, (OpNode i64:$src2, i64:$src))]> {
-  bits<4> op;
-  bits<1> BPFSrc;
+    : F_COF<7 /* BPF_ALU64 */, Opc, 1 /* BPF_X */,
+            (outs GPR:$dst), (ins GPR:$srcd, GPR:$src),
+            !strconcat(OpcodeStr, "\t$dst, $src"),
+            [(set GPR:$dst, (OpNode GPR:$srcd, GPR:$src))]> {
   bits<4> dst;
   bits<4> src;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{55-52} = src;
-  let Inst{51-48} = dst;
-
-  let op = Opc;
-  let BPFSrc = 1;
-  let BPFClass = 7; // BPF_ALU64
+  let BPFDst = dst;
+  let BPFSrc = src;
+  let BPFOff = 0;
+  let BPFImm = 0;
 }
 
 multiclass ALU<bits<4> Opc, string OpcodeStr, SDNode OpNode> {
@@ -180,141 +154,117 @@ multiclass ALU<bits<4> Opc, string OpcodeStr, SDNode OpNode> {
   def _ri : ALU_RI<Opc, OpcodeStr, OpNode>;
 }
 
-let Constraints = "$dst = $src2" in {
-let isAsCheapAsAMove = 1 in {
-  defm ADD : ALU<0x0, "add", add>;
-  defm SUB : ALU<0x1, "sub", sub>;
-  defm OR  : ALU<0x4, "or", or>;
-  defm AND : ALU<0x5, "and", and>;
-  defm SLL : ALU<0x6, "sll", shl>;
-  defm SRL : ALU<0x7, "srl", srl>;
-  defm XOR : ALU<0xa, "xor", xor>;
-  defm SRA : ALU<0xc, "sra", sra>;
-}
-  defm MUL : ALU<0x2, "mul", mul>;
+let Constraints = "$dst = $srcd" in {
+  let isAsCheapAsAMove = 1 in {
+    let isCommutable = 1 in {
+      defm ADD : ALU<0x0, "add", add>;
+      defm OR  : ALU<0x4, "or", or>;
+      defm AND : ALU<0x5, "and", and>;
+      defm XOR : ALU<0xa, "xor", xor>;
+    }
+    defm SUB : ALU<0x1, "sub", sub>;
+    defm SLL : ALU<0x6, "sll", shl>;
+    defm SRL : ALU<0x7, "srl", srl>;
+    defm SRA : ALU<0xc, "sra", sra>;
+  }
+  let isCommutable = 1 in {
+    defm MUL : ALU<0x2, "mul", mul>;
+  }
   defm DIV : ALU<0x3, "div", udiv>;
-}
-
-class MOV_RR<string OpcodeStr>
-    : InstBPF<(outs GPR:$dst), (ins GPR:$src),
-              !strconcat(OpcodeStr, "\t$dst, $src"),
-              []> {
-  bits<4> op;
-  bits<1> BPFSrc;
-  bits<4> dst;
-  bits<4> src;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{55-52} = src;
-  let Inst{51-48} = dst;
-
-  let op = 0xb;     // BPF_MOV
-  let BPFSrc = 1;   // BPF_X
-  let BPFClass = 7; // BPF_ALU64
-}
-
-class MOV_RI<string OpcodeStr>
-    : InstBPF<(outs GPR:$dst), (ins i64imm:$imm),
-              !strconcat(OpcodeStr, "\t$dst, $imm"),
-              [(set GPR:$dst, (i64 i64immSExt32:$imm))]> {
-  bits<4> op;
-  bits<1> BPFSrc;
-  bits<4> dst;
-  bits<32> imm;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{51-48} = dst;
-  let Inst{31-0} = imm;
-
-  let op = 0xb;     // BPF_MOV
-  let BPFSrc = 0;   // BPF_K
-  let BPFClass = 7; // BPF_ALU64
-}
-
-class LD_IMM64<bits<4> Pseudo, string OpcodeStr>
-    : InstBPF<(outs GPR:$dst), (ins u64imm:$imm),
-              !strconcat(OpcodeStr, "\t$dst, $imm"),
-              [(set GPR:$dst, (i64 imm:$imm))]> {
-
-  bits<3> mode;
-  bits<2> size;
-  bits<4> dst;
-  bits<64> imm;
-
-  let Inst{63-61} = mode;
-  let Inst{60-59} = size;
-  let Inst{51-48} = dst;
-  let Inst{55-52} = Pseudo;
-  let Inst{47-32} = 0;
-  let Inst{31-0} = imm{31-0};
-
-  let mode = 0;     // BPF_IMM
-  let size = 3;     // BPF_DW
-  let BPFClass = 0; // BPF_LD
+  defm MOD : ALU<0x9, "mod", urem>;
 }
 
 let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
-def LD_imm64 : LD_IMM64<0, "ld_64">;
-def MOV_rr : MOV_RR<"mov">;
-def MOV_ri : MOV_RI<"mov">;
+
+  def MOV_rr
+    : F_COF<7 /* BPF_ALU64 */, 0xb /* BPF_MOV */, 1 /* BPF_X */,
+            (outs GPR:$dst), (ins GPR:$src),
+            "mov\t$dst, $src", []> {
+    bits<4> dst;
+    bits<4> src;
+    let BPFDst = dst;
+    let BPFSrc = src;
+    let BPFOff = 0;
+    let BPFImm = 0;
+  }
+
+  let isMoveImm = 1 in {
+  def MOV_ri
+    : F_COF<7 /* BPF_ALU64 */, 0xb /* BPF_MOV */, 0 /* BPF_K */,
+           (outs GPR:$dst), (ins i64imm:$imm),
+           "mov\t$dst, $imm",
+           [(set GPR:$dst, (i64 i64immSExt32:$imm))]> {
+    bits<4> dst;
+    bits<32> imm;
+    let BPFDst = dst;
+    let BPFSrc = 0;
+    let BPFOff = 0;
+    let BPFImm = imm;
+  }
+
+  def LD_imm64
+    : F_CMS<0 /* BPF_LD */, 0 /* BPF_IMM */, 3 /* BPF_DW */,
+            (outs GPR:$dst), (ins u64imm:$imm),
+            "ld_64\t$dst, $imm", []> {
+    bits<4> dst;
+    bits<64> imm;
+    let BPFDst = dst;
+    let BPFSrc = 0;
+    let BPFOff = 0;
+    let BPFImm = imm{31-0};
+  }
+
+  def LD_pseudo
+    : F_CMS<0 /* BPF_LD */, 0 /* BPF_IMM */, 3 /* BPF_DW */,
+            (outs GPR:$dst), (ins i64imm:$pseudo, u64imm:$imm),
+            "ld_pseudo\t$dst, $pseudo, $imm",
+            [(set GPR:$dst, (int_bpf_pseudo imm:$pseudo, imm:$imm))]> {
+    bits<4> dst;
+    bits<4> pseudo;
+    bits<64> imm;
+    let BPFDst = dst;
+    let BPFSrc = pseudo;
+    let BPFOff = 0;
+    let BPFImm = imm{31-0};
+  }
+  } // isMoveImm
 }
 
 def FI_ri
     : InstBPF<(outs GPR:$dst), (ins MEMri:$addr),
                "lea\t$dst, $addr",
-               [(set i64:$dst, FIri:$addr)]> {
+               [(set GPR:$dst, FIri:$addr)]> {
   // This is a tentative instruction, and will be replaced
   // with MOV_rr and ADD_ri in PEI phase
 }
 
-
-def LD_pseudo
-    : InstBPF<(outs GPR:$dst), (ins i64imm:$pseudo, u64imm:$imm),
-              "ld_pseudo\t$dst, $pseudo, $imm",
-              [(set GPR:$dst, (int_bpf_pseudo imm:$pseudo, imm:$imm))]> {
-
-  bits<3> mode;
-  bits<2> size;
-  bits<4> dst;
-  bits<64> imm;
-  bits<4> pseudo;
-
-  let Inst{63-61} = mode;
-  let Inst{60-59} = size;
-  let Inst{51-48} = dst;
-  let Inst{55-52} = pseudo;
-  let Inst{47-32} = 0;
-  let Inst{31-0} = imm{31-0};
-
-  let mode = 0;     // BPF_IMM
-  let size = 3;     // BPF_DW
-  let BPFClass = 0; // BPF_LD
+let hasSideEffects = 0 in {
+  def NOP
+    : F_COF<7 /* BPF_ALU64 */, 0xb /* BPF_MOV */, 1 /* BPF_X */,
+            (outs), (ins), "nop", []> {
+    // mov r0, r0 == nop
+    let BPFDst = 0;
+    let BPFSrc = 0;
+    let BPFOff = 0;
+    let BPFImm = 0;
+  }
 }
 
 // STORE instructions
 class STORE<bits<2> SizeOp, string OpcodeStr, list<dag> Pattern>
-    : InstBPF<(outs), (ins GPR:$src, MEMri:$addr),
-              !strconcat(OpcodeStr, "\t$addr, $src"), Pattern> {
-  bits<3> mode;
-  bits<2> size;
+    : F_CMS<3 /* BPF_STX */, 3 /* BPF_MEM */, SizeOp,
+           (outs), (ins GPR:$src, MEMri:$addr),
+           !strconcat(OpcodeStr, "\t$addr, $src"), Pattern> {
   bits<4> src;
   bits<20> addr;
-
-  let Inst{63-61} = mode;
-  let Inst{60-59} = size;
-  let Inst{51-48} = addr{19-16}; // base reg
-  let Inst{55-52} = src;
-  let Inst{47-32} = addr{15-0}; // offset
-
-  let mode = 3;     // BPF_MEM
-  let size = SizeOp;
-  let BPFClass = 3; // BPF_STX
+  let BPFSrc = src;
+  let BPFDst = addr{19-16}; // base reg
+  let BPFOff = addr{15-0};  // offset
+  let BPFImm = 0;
 }
 
 class STOREi64<bits<2> Opc, string OpcodeStr, PatFrag OpNode>
-    : STORE<Opc, OpcodeStr, [(OpNode i64:$src, ADDRri:$addr)]>;
+    : STORE<Opc, OpcodeStr, [(OpNode GPR:$src, ADDRri:$addr)]>;
 
 def STW : STOREi64<0x0, "stw", truncstorei32>;
 def STH : STOREi64<0x1, "sth", truncstorei16>;
@@ -323,116 +273,65 @@ def STD : STOREi64<0x3, "std", store>;
 
 // LOAD instructions
 class LOAD<bits<2> SizeOp, string OpcodeStr, list<dag> Pattern>
-    : InstBPF<(outs GPR:$dst), (ins MEMri:$addr),
-              !strconcat(OpcodeStr, "\t$dst, $addr"), Pattern> {
-  bits<3> mode;
-  bits<2> size;
+    : F_CMS<1 /* BPF_LDX */, 3 /* BPF_MEM */, SizeOp,
+            (outs GPR:$dst), (ins MEMri:$addr),
+            !strconcat(OpcodeStr, "\t$dst, $addr"), Pattern> {
   bits<4> dst;
   bits<20> addr;
-
-  let Inst{63-61} = mode;
-  let Inst{60-59} = size;
-  let Inst{51-48} = dst;
-  let Inst{55-52} = addr{19-16};
-  let Inst{47-32} = addr{15-0};
-
-  let mode = 3;     // BPF_MEM
-  let size = SizeOp;
-  let BPFClass = 1; // BPF_LDX
+  let BPFDst = dst;
+  let BPFSrc = addr{19-16}; // base reg
+  let BPFOff = addr{15-0};  // offset
+  let BPFImm = 0;
 }
 
 class LOADi64<bits<2> SizeOp, string OpcodeStr, PatFrag OpNode>
-    : LOAD<SizeOp, OpcodeStr, [(set i64:$dst, (OpNode ADDRri:$addr))]>;
+    : LOAD<SizeOp, OpcodeStr, [(set GPR:$dst, (OpNode ADDRri:$addr))]>;
 
 def LDW : LOADi64<0x0, "ldw", zextloadi32>;
 def LDH : LOADi64<0x1, "ldh", zextloadi16>;
 def LDB : LOADi64<0x2, "ldb", zextloadi8>;
 def LDD : LOADi64<0x3, "ldd", load>;
 
-class BRANCH<bits<4> Opc, string OpcodeStr, list<dag> Pattern>
-    : InstBPF<(outs), (ins brtarget:$BrDst),
-              !strconcat(OpcodeStr, "\t$BrDst"), Pattern> {
-  bits<4> op;
-  bits<16> BrDst;
-  bits<1> BPFSrc;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{47-32} = BrDst;
-
-  let op = Opc;
-  let BPFSrc = 0;
-  let BPFClass = 5; // BPF_JMP
-}
-
-class CALL<string OpcodeStr>
-    : InstBPF<(outs), (ins calltarget:$BrDst),
-              !strconcat(OpcodeStr, "\t$BrDst"), []> {
-  bits<4> op;
-  bits<32> BrDst;
-  bits<1> BPFSrc;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{31-0} = BrDst;
-
-  let op = 8;       // BPF_CALL
-  let BPFSrc = 0;
-  let BPFClass = 5; // BPF_JMP
-}
-
 // Jump always
 let isBranch = 1, isTerminator = 1, hasDelaySlot=0, isBarrier = 1 in {
-  def JMP : BRANCH<0x0, "jmp", [(br bb:$BrDst)]>;
+  def JMP
+    : F_COF<5 /* BPF_JMP */, 0 /* BPF_JA */, 0 /* BPF_K */,
+            (outs), (ins brtarget:$BrDst),
+            "jmp\t$BrDst", [(br bb:$BrDst)]> {
+    bits<16> BrDst;
+    let BPFDst = 0;
+    let BPFSrc = 0;
+    let BPFOff = BrDst;
+    let BPFImm = 0;
+  }
 }
 
 // Jump and link
 let isCall=1, hasDelaySlot=0, Uses = [R11],
     // Potentially clobbered registers
     Defs = [R0, R1, R2, R3, R4, R5] in {
-  def JAL  : CALL<"call">;
-}
-
-class NOP_I<string OpcodeStr>
-    : InstBPF<(outs), (ins i32imm:$imm),
-              !strconcat(OpcodeStr, "\t$imm"), []> {
-  // mov r0, r0 == nop
-  bits<4> op;
-  bits<1> BPFSrc;
-  bits<4> dst;
-  bits<4> src;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{55-52} = src;
-  let Inst{51-48} = dst;
-
-  let op = 0xb;     // BPF_MOV
-  let BPFSrc = 1;   // BPF_X
-  let BPFClass = 7; // BPF_ALU64
-  let src = 0;      // R0
-  let dst = 0;      // R0
-}
-
-let hasSideEffects = 0 in
-  def NOP : NOP_I<"nop">;
-
-class RET<string OpcodeStr>
-    : InstBPF<(outs), (ins),
-              !strconcat(OpcodeStr, ""), [(BPFretflag)]> {
-  bits<4> op;
-
-  let Inst{63-60} = op;
-  let Inst{59} = 0;
-  let Inst{31-0} = 0;
-
-  let op = 9;       // BPF_EXIT
-  let BPFClass = 5; // BPF_JMP
+  def JAL
+    : F_COF<5 /* BPF_JMP */, 8 /* BPF_CALL */, 0 /* BPF_K */,
+            (outs), (ins calltarget:$BrDst),
+            "call\t$BrDst", []> {
+    bits<32> BrDst;
+    let BPFDst = 0;
+    let BPFSrc = 0;
+    let BPFOff = 0;
+    let BPFImm = BrDst;
+  }
 }
 
 let isReturn = 1, isTerminator = 1, hasDelaySlot=0, isBarrier = 1,
     isNotDuplicable = 1 in {
-  def RET : RET<"ret">;
+  def RET
+    : F_COF<5 /* BPF_JMP */, 9 /* BPF_EXIT */, 0 /* BPF_K */,
+            (outs), (ins), "ret", [(BPFretflag)]> {
+    let BPFDst = 0;
+    let BPFSrc = 0;
+    let BPFOff = 0;
+    let BPFImm = 0;
+  }
 }
 
 // ADJCALLSTACKDOWN/UP pseudo insns
@@ -471,93 +370,72 @@ def : Pat<(extloadi32 ADDRri:$src), (i64 (LDW ADDRri:$src))>;
 
 // Atomics
 class XADD<bits<2> SizeOp, string OpcodeStr, PatFrag OpNode>
-    : InstBPF<(outs GPR:$dst), (ins MEMri:$addr, GPR:$val),
-              !strconcat(OpcodeStr, "\t$dst, $addr, $val"),
-              [(set GPR:$dst, (OpNode ADDRri:$addr, GPR:$val))]> {
-  bits<3> mode;
-  bits<2> size;
-  bits<4> src;
+    : F_CMS<3 /* BPF_STX */, 6 /* BPF_XADD */, SizeOp,
+            (outs GPR:$dst), (ins MEMri:$addr, GPR:$srcd),
+            !strconcat(OpcodeStr, "\t$dst, $addr, $srcd"),
+            [(set GPR:$dst, (OpNode ADDRri:$addr, GPR:$srcd))]> {
+  bits<4> srcd;
   bits<20> addr;
-
-  let Inst{63-61} = mode;
-  let Inst{60-59} = size;
-  let Inst{51-48} = addr{19-16}; // base reg
-  let Inst{55-52} = src;
-  let Inst{47-32} = addr{15-0}; // offset
-
-  let mode = 6;     // BPF_XADD
-  let size = SizeOp;
-  let BPFClass = 3; // BPF_STX
+  let BPFSrc = srcd;
+  let BPFDst = addr{19-16}; // base reg
+  let BPFOff = addr{15-0};  // offset
+  let BPFImm = 0;
 }
 
-let Constraints = "$dst = $val" in {
-def XADD32 : XADD<0, "xadd32", atomic_load_add_32>;
-def XADD64 : XADD<3, "xadd64", atomic_load_add_64>;
-// undefined def XADD16 : XADD<1, "xadd16", atomic_load_add_16>;
-// undefined def XADD8  : XADD<2, "xadd8", atomic_load_add_8>;
+let Constraints = "$dst = $srcd" in {
+  def XADD32 : XADD<0, "xadd32", atomic_load_add_32>;
+  def XADD64 : XADD<3, "xadd64", atomic_load_add_64>;
+  // undefined def XADD16 : XADD<1, "xadd16", atomic_load_add_16>;
+  // undefined def XADD8  : XADD<2, "xadd8", atomic_load_add_8>;
 }
 
 // bswap16, bswap32, bswap64
+// (TODO: use BPF_TO_LE for big-endian target)
 class BSWAP<bits<32> SizeOp, string OpcodeStr, list<dag> Pattern>
-    : InstBPF<(outs GPR:$dst), (ins GPR:$src),
-              !strconcat(OpcodeStr, "\t$dst"),
-              Pattern> {
-  bits<4> op;
-  bits<1> BPFSrc;
+    : F_COF<4 /* BPF_ALU */, 0xd /* BPF_END */, 1 /* BPF_TO_BE */,
+            (outs GPR:$dst), (ins GPR:$src),
+            !strconcat(OpcodeStr, "\t$dst"), Pattern> {
   bits<4> dst;
-  bits<32> imm;
-
-  let Inst{63-60} = op;
-  let Inst{59} = BPFSrc;
-  let Inst{51-48} = dst;
-  let Inst{31-0} = imm;
-
-  let op = 0xd;     // BPF_END
-  let BPFSrc = 1;   // BPF_TO_BE (TODO: use BPF_TO_LE for big-endian target)
-  let BPFClass = 4; // BPF_ALU
-  let imm = SizeOp;
+  let BPFDst = dst;
+  let BPFSrc = 0;
+  let BPFOff = 0;
+  let BPFImm = SizeOp;
 }
 
 let Constraints = "$dst = $src" in {
-def BSWAP16 : BSWAP<16, "bswap16", [(set GPR:$dst, (srl (bswap GPR:$src), (i64 48)))]>;
-def BSWAP32 : BSWAP<32, "bswap32", [(set GPR:$dst, (srl (bswap GPR:$src), (i64 32)))]>;
-def BSWAP64 : BSWAP<64, "bswap64", [(set GPR:$dst, (bswap GPR:$src))]>;
+  def BSWAP16 : BSWAP<16, "bswap16",
+                      [(set GPR:$dst, (srl (bswap GPR:$src), (i64 48)))]>;
+  def BSWAP32 : BSWAP<32, "bswap32",
+                      [(set GPR:$dst, (srl (bswap GPR:$src), (i64 32)))]>;
+  def BSWAP64 : BSWAP<64, "bswap64",
+                      [(set GPR:$dst, (bswap GPR:$src))]>;
 }
 
 let Defs = [R0, R1, R2, R3, R4, R5], Uses = [R6], hasSideEffects = 1,
     hasExtraDefRegAllocReq = 1, hasExtraSrcRegAllocReq = 1, mayLoad = 1 in {
+
 class LOAD_ABS<bits<2> SizeOp, string OpcodeStr, Intrinsic OpNode>
-    : InstBPF<(outs), (ins GPR:$skb, i64imm:$imm),
-              !strconcat(OpcodeStr, "\tr0, $skb.data + $imm"),
-              [(set R0, (OpNode GPR:$skb, i64immSExt32:$imm))]> {
-  bits<3> mode;
-  bits<2> size;
+    : F_CMS<0 /* BPF_LD */, 1 /* BPF_ABS */, SizeOp,
+            (outs), (ins GPR:$skb, i64imm:$imm),
+            !strconcat(OpcodeStr, "\tr0, $skb.data + $imm"),
+            [(set R0, (OpNode GPR:$skb, i64immSExt32:$imm))]> {
   bits<32> imm;
-
-  let Inst{63-61} = mode;
-  let Inst{60-59} = size;
-  let Inst{31-0} = imm;
-
-  let mode = 1;     // BPF_ABS
-  let size = SizeOp;
-  let BPFClass = 0; // BPF_LD
+  let BPFDst = 0;
+  let BPFSrc = 0;
+  let BPFOff = 0;
+  let BPFImm = imm;
 }
 
 class LOAD_IND<bits<2> SizeOp, string OpcodeStr, Intrinsic OpNode>
-    : InstBPF<(outs), (ins GPR:$skb, GPR:$val),
-              !strconcat(OpcodeStr, "\tr0, $skb.data + $val"),
-              [(set R0, (OpNode GPR:$skb, GPR:$val))]> {
-  bits<3> mode;
-  bits<2> size;
+    : F_CMS<0 /* BPF_LD */, 2 /* BPF_IND */, SizeOp,
+            (outs), (ins GPR:$skb, GPR:$val),
+            !strconcat(OpcodeStr, "\tr0, $skb.data + $val"),
+            [(set R0, (OpNode GPR:$skb, GPR:$val))]> {
   bits<4> val;
-
-  let Inst{63-61} = mode;
-  let Inst{60-59} = size;
-  let Inst{55-52} = val;
-
-  let mode = 2;     // BPF_IND
-  let size = SizeOp;
-  let BPFClass = 0; // BPF_LD
+  let BPFDst = 0;
+  let BPFSrc = val;
+  let BPFOff = 0;
+  let BPFImm = 0;
 }
 }
 
