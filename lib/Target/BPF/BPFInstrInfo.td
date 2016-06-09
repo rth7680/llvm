@@ -273,6 +273,21 @@ let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
   } // isMoveImm
 }
 
+let Constraints = "$dst = $srcd", isAsCheapAsAMove = 1, isCommutable = 1 in {
+  def AND_ru
+    : F_COF<4 /* BPF_ALU */, 0x5 /* BPF_AND */, 0 /* BPF_K */,
+            (outs GPR:$dst), (ins GPR:$srcd, i64imm:$imm),
+            "andwi\t$dst, $imm",
+            [(set GPR:$dst, (and GPR:$srcd, i64immZExt32:$imm))]> {
+    bits<4> dst;
+    bits<32> imm;
+    let BPFDst = dst;
+    let BPFSrc = 0;
+    let BPFOff = 0;
+    let BPFImm = imm;
+  }
+}
+
 def FI_ri
     : InstBPF<(outs GPR:$dst), (ins MEMri:$addr),
                "lea\t$dst, $addr",
